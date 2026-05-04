@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 
 final class TrackAudioNode {
     let trackNumber: Int
@@ -13,6 +14,8 @@ final class TrackAudioNode {
     // Written only from audio thread while isCapturing = true; read on main thread after isCapturing = false.
     nonisolated(unsafe) private(set) var recordingFramePosition: AVAudioFrameCount = 0
     nonisolated(unsafe) var isCapturing: Bool = false
+    // RMS of the most-recently captured block — written on audio thread, read on main thread.
+    nonisolated(unsafe) private(set) var lastInputRMS: Float = 0
 
     // How many seconds of audio to pre-allocate for recording
     private static let maxRecordingSeconds: Double = 300
@@ -51,6 +54,14 @@ final class TrackAudioNode {
             memcpy(destData.advanced(by: Int(recordingFramePosition)), src, frames * MemoryLayout<Float>.size)
         }
         recordingFramePosition += buffer.frameLength
+
+        // Track RMS of channel 0 for the level meter (written on audio thread, read on main thread —
+        // Float assignment is atomic on ARM so tearing is not a concern for a meter).
+        if let src = buffer.floatChannelData?[0], frames > 0 {
+            var rms: Float = 0
+            vDSP_rmsqv(src, 1, &rms, vDSP_Length(frames))
+            lastInputRMS = rms
+        }
     }
 
     // Call from main thread to stop recording

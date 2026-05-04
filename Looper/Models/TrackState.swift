@@ -19,6 +19,7 @@ final class TrackModel: ObservableObject, Identifiable {
     @Published var state: TrackState = .empty
     @Published var layerCount: Int = 0
     @Published var level: Float = 0.0
+    @Published var recordingSeconds: Double = 0
 
     // Set by LoopSession after init
     var audioEngine: AudioEngine?

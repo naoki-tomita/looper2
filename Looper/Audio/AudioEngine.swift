@@ -197,15 +197,24 @@ final class AudioEngine {
     }
 
     // MARK: - Level metering
-    // Returns RMS level [0,1] for a track (called periodically from UI timer)
+
+    // Returns RMS level [0,1] for the level meter bar.
     @MainActor
     func rmsLevel(for trackNumber: Int) -> Float {
         guard let node = trackNodes[trackNumber] else { return 0 }
-        let mixer = node.mixerNode
-        // AVAudioMixerNode doesn't expose per-bus metering directly;
-        // we approximate via outputVolume and player.isPlaying
-        guard node.playerNode.isPlaying, mixer.outputVolume > 0 else { return 0 }
-        return 0.6  // placeholder — replace with actual metering tap if needed
+        if node.isCapturing {
+            // During recording, show the live input level.
+            return min(node.lastInputRMS * 4, 1.0)  // boost so the bar moves visibly
+        }
+        guard node.playerNode.isPlaying, node.mixerNode.outputVolume > 0 else { return 0 }
+        return 0.5  // playback indicator (full metering would need a separate tap)
+    }
+
+    // Returns elapsed recording time in seconds for a currently-recording track.
+    @MainActor
+    func recordingSeconds(for trackNumber: Int) -> Double {
+        guard let node = trackNodes[trackNumber], node.isCapturing else { return 0 }
+        return Double(node.recordingFramePosition) / Self.canonicalFormat.sampleRate
     }
 
     // MARK: - Route change

@@ -47,6 +47,9 @@ final class LoopSession: ObservableObject, LevelUpdateTarget {
     private func updateLevels() {
         for track in tracks {
             track.level = audioEngine.rmsLevel(for: track.id.number)
+            if track.state == .recording || track.state == .overdubbing {
+                track.recordingSeconds = audioEngine.recordingSeconds(for: track.id.number)
+            }
         }
     }
 
