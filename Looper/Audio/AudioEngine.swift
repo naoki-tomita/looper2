@@ -42,7 +42,9 @@ final class AudioEngine {
             engine.attach(node.playerNode)
             engine.attach(node.mixerNode)
             engine.connect(node.playerNode, to: node.mixerNode, format: Self.canonicalFormat)
-            engine.connect(node.mixerNode, to: mainMixer, format: Self.canonicalFormat)
+            // Use nil so the engine negotiates the format with the hardware output node,
+            // avoiding sample-rate mismatches that cause engine.start() to throw.
+            engine.connect(node.mixerNode, to: mainMixer, format: nil)
         }
     }
 

@@ -24,6 +24,17 @@ struct ContentView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 10)
 
+                // Engine error banner
+                if let err = session.engineError {
+                    Text(err)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(DesignTokens.ledRed.opacity(0.7))
+                }
+
                 Divider()
                     .background(DesignTokens.borderSubtle)
 

@@ -1,11 +1,13 @@
 import Foundation
 import Combine
+import AVFoundation
 
 @MainActor
 final class LoopSession: ObservableObject, LevelUpdateTarget {
     static let trackCount = 6
 
     @Published var tracks: [TrackModel]
+    @Published var engineError: String? = nil
     let loopClock: LoopClock
     let audioEngine: AudioEngine
 
@@ -19,18 +21,27 @@ final class LoopSession: ObservableObject, LevelUpdateTarget {
         tracks = ids.map { TrackModel(id: $0) }
         tracks.forEach { $0.audioEngine = audioEngine }
 
-        Task {
-            do {
-                try audioEngine.start()
-            } catch {
-                print("AudioEngine start failed: \(error)")
-            }
-        }
-
         // Update level meters at ~30fps
         levelTimer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.updateLevels() }
+
+        // Request mic permission then start the engine synchronously on the main actor.
+        // Using requestRecordPermission so the dialog appears before the user can tap REC.
+        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if !granted {
+                    self.engineError = "マイクへのアクセスが拒否されました。設定アプリから許可してください。"
+                    return
+                }
+                do {
+                    try self.audioEngine.start()
+                } catch {
+                    self.engineError = "オーディオエンジンの起動に失敗しました: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     private func updateLevels() {
