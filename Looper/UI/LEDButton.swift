@@ -36,7 +36,7 @@ struct LEDButton: View {
         }
         .buttonStyle(.plain)
         .onAppear { if isBlinking { startBlink() } }
-        .onChange(of: isBlinking) { _, newValue in
+        .onChange(of: isBlinking) { newValue in
             if newValue { startBlink() } else { blinkPhase = false }
         }
     }
