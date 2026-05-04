@@ -23,6 +23,7 @@ final class AudioEngine {
     // Weak back-reference to update TrackModel.level from metering.
     private weak var levelUpdateTarget: LevelUpdateTarget?
 
+    @MainActor
     init(trackCount: Int, clock: LoopClock) {
         self.clock = clock
         for i in 1...trackCount {
@@ -35,6 +36,7 @@ final class AudioEngine {
         }
     }
 
+    @MainActor
     private func buildGraph() {
         let mainMixer = engine.mainMixerNode
         for (_, node) in trackNodes {
@@ -45,12 +47,14 @@ final class AudioEngine {
         }
     }
 
+    @MainActor
     func start() throws {
         try sessionManager.configure()
         try engine.start()
         installCaptureTap()
     }
 
+    @MainActor
     private func installCaptureTap() {
         guard !tapInstalled else { return }
         let inputNode = engine.inputNode
@@ -84,6 +88,7 @@ final class AudioEngine {
         tapInstalled = true
     }
 
+    @MainActor
     private func removeCaptureTap() {
         guard tapInstalled else { return }
         engine.inputNode.removeTap(onBus: 0)
@@ -92,6 +97,7 @@ final class AudioEngine {
 
     // MARK: - Track control (called from main thread via TrackModel)
 
+    @MainActor
     func handleRec(trackNumber: Int, model: TrackModel) {
         guard let node = trackNodes[trackNumber] else { return }
         let now = engine.outputNode.lastRenderTime ?? AVAudioTime.futureTime(secondsFromNow: 0.05)
@@ -133,6 +139,7 @@ final class AudioEngine {
         }
     }
 
+    @MainActor
     func handleMute(trackNumber: Int, model: TrackModel) {
         guard let node = trackNodes[trackNumber] else { return }
         switch model.state {
@@ -147,6 +154,7 @@ final class AudioEngine {
         }
     }
 
+    @MainActor
     func handleUndo(trackNumber: Int, model: TrackModel) {
         guard let node = trackNodes[trackNumber],
               model.state == .playing || model.state == .muted else { return }
@@ -159,12 +167,14 @@ final class AudioEngine {
         }
     }
 
+    @MainActor
     func masterStop() {
         for (_, node) in trackNodes {
             node.stop()
         }
     }
 
+    @MainActor
     func masterClear() {
         for (_, node) in trackNodes {
             node.clear()
@@ -174,6 +184,7 @@ final class AudioEngine {
 
     // MARK: - Level metering
     // Returns RMS level [0,1] for a track (called periodically from UI timer)
+    @MainActor
     func rmsLevel(for trackNumber: Int) -> Float {
         guard let node = trackNodes[trackNumber] else { return 0 }
         let mixer = node.mixerNode
@@ -185,6 +196,7 @@ final class AudioEngine {
 
     // MARK: - Route change
 
+    @MainActor
     private func handleRouteChange() {
         removeCaptureTap()
         inputConverter = nil
