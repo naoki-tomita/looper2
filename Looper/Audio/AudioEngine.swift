@@ -17,7 +17,6 @@ final class AudioEngine {
     private let sessionManager = AudioSessionManager.shared
     // trackNodes is set at init and never mutated — safe to read from any thread.
     private(set) var trackNodes: [Int: TrackAudioNode] = [:]
-    private var inputConverter: AVAudioConverter?
     private var tapInstalled = false
 
     // Weak back-reference to update TrackModel.level from metering.
@@ -58,29 +57,42 @@ final class AudioEngine {
     private func installCaptureTap() {
         guard !tapInstalled else { return }
         let inputNode = engine.inputNode
-        let hwFormat = inputNode.outputFormat(forBus: 0)
 
-        // Always build a converter so we consistently deliver canonical format,
-        // even if HW is mono or at a different sample rate.
-        inputConverter = AVAudioConverter(from: hwFormat, to: Self.canonicalFormat)
+        // Pass nil so AVAudioEngine uses the node's native hardware format.
+        // Querying outputFormat(forBus:) before the first render can return
+        // a zero sample-rate format and crash; nil avoids that entirely.
+        // The converter is built lazily on the first callback (audio thread, once only).
+        var lazyConverter: AVAudioConverter? = nil
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: hwFormat) { [weak self] buffer, _ in
-            guard let self, let converter = self.inputConverter else { return }
-            let ratio = Self.canonicalFormat.sampleRate / hwFormat.sampleRate
-            let outCapacity = max(1, AVAudioFrameCount(Double(buffer.frameLength) * ratio + 1))
-            guard let outBuf = AVAudioPCMBuffer(pcmFormat: Self.canonicalFormat, frameCapacity: outCapacity) else { return }
-            var error: NSError?
-            var consumed = false
-            converter.convert(to: outBuf, error: &error) { _, outStatus in
-                if consumed { outStatus.pointee = .endOfStream; return nil }
-                consumed = true
-                outStatus.pointee = .haveData
-                return buffer
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
+            guard let self else { return }
+
+            // Build converter once, on first buffer delivery
+            if lazyConverter == nil {
+                lazyConverter = AVAudioConverter(from: buffer.format, to: Self.canonicalFormat)
             }
-            guard error == nil, outBuf.frameLength > 0 else { return }
-            let canonical = outBuf
 
-            // Distribute to all currently-capturing nodes (real-time safe: only memcpy + flag read)
+            let canonical: AVAudioPCMBuffer
+            if let converter = lazyConverter,
+               buffer.format != Self.canonicalFormat {
+                let ratio = Self.canonicalFormat.sampleRate / buffer.format.sampleRate
+                let outCapacity = max(1, AVAudioFrameCount(Double(buffer.frameLength) * ratio + 1))
+                guard let outBuf = AVAudioPCMBuffer(pcmFormat: Self.canonicalFormat,
+                                                    frameCapacity: outCapacity) else { return }
+                var error: NSError?
+                var consumed = false
+                converter.convert(to: outBuf, error: &error) { _, outStatus in
+                    if consumed { outStatus.pointee = .endOfStream; return nil }
+                    consumed = true
+                    outStatus.pointee = .haveData
+                    return buffer
+                }
+                guard error == nil, outBuf.frameLength > 0 else { return }
+                canonical = outBuf
+            } else {
+                canonical = buffer
+            }
+
             for (_, node) in self.trackNodes where node.isCapturing {
                 node.appendAudioData(canonical)
             }
@@ -199,7 +211,6 @@ final class AudioEngine {
     @MainActor
     private func handleRouteChange() {
         removeCaptureTap()
-        inputConverter = nil
         // Stop all recording tracks to avoid buffer corruption
         for (_, node) in trackNodes where node.isCapturing {
             node.stopCapturing()
