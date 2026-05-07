@@ -8,7 +8,7 @@ final class AudioEngine {
     static let canonicalFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: 44100,
-        channels: 2,
+        channels: 1,
         interleaved: false
     )!
 
